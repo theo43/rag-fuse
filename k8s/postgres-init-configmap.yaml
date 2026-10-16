@@ -8,8 +8,10 @@ data:
     CREATE EXTENSION IF NOT EXISTS vector;
 
     CREATE TABLE IF NOT EXISTS chunks (
-        id        TEXT PRIMARY KEY,          -- document id from the SyntecRetrieval corpus
-        content   TEXT NOT NULL,             -- passage text (without the "passage: " prefix)
+        id        TEXT PRIMARY KEY,          -- "<doc_id>#<chunk number>", e.g. "article-10#0"
+        doc_id    TEXT NOT NULL,             -- document id from the SyntecRetrieval corpus
+        title     TEXT NOT NULL,             -- article title, e.g. "Article 10 : Contrats à durée déterminée"
+        content   TEXT NOT NULL,             -- chunk text (without the "passage: " prefix)
         embedding vector(384) NOT NULL       -- intfloat/multilingual-e5-small
     );
 
