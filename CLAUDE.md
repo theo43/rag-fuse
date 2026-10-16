@@ -13,7 +13,7 @@ The goal is learning, not shipping a product: every piece of code must be readab
 - **No speculative code.** No feature, config option, abstraction layer or exotic error case that was not asked for. When in doubt, ask.
 - **Limited code volume.** One service = a few hundred lines at most. If a change exceeds ~150 lines, stop and propose a split before writing. This limit excludes generated files (`uv.lock` and similar)
 - **Explain before writing** for any structural choice (new dependency, new file, schema change, new k8s manifest).
-- Follow the Git workflow below: one branch per phase, merged into `main` and pushed to GitHub only after explicit approval.
+- Follow the Git workflow below: one branch per phase, delivered as a pull request that the user reviews and merges.
 - Secrets (Anthropic API key, Langfuse keys, Postgres password) are never written in code, manifests or the repository.
 ---
  
@@ -23,15 +23,16 @@ The repository is hosted on the user's GitHub account (remote `origin`). Each ph
  
 1. **Start of a phase**: update `main` (`git pull`), then create a branch `phase-<N>-<short-name>` from it (e.g. `phase-2-retriever`).
 2. **During the phase**: one logical change per commit (e.g. schema, then endpoint, then tests) on the phase branch, using Conventional Commits (`feat:`, `fix:`, `test:`, `chore:`, `docs:`, `refactor:`). Commit without asking, but never on `main` directly.
-3. **End of the phase**: run the tests and the manual check defined for the phase, then give the user a short summary (what was built, how it was verified, anything left open) and **ask for approval before merging**.
-4. **After approval**:
-   - `git checkout main && git merge --no-ff phase-<N>-<short-name>` with the message `Merge phase <N>: <short-name>`
-   - `git push origin main` and `git push origin phase-<N>-<short-name>`
-5. Only then start the next phase (back to step 1).
+3. **End of the phase**: run the tests and the manual check defined for the phase, then:
+   - `git push -u origin phase-<N>-<short-name>`
+   - open a pull request against `main` with `gh pr create`, titled `Phase <N>: <short-name>`, whose description covers what was built, how it was verified, and anything left open
+   - give the user the PR link and a short summary
+4. **Review**: the user reviews and merges the pull request on GitHub. **Never merge it yourself** (no local merge into `main`, no `gh pr merge`). Review feedback is addressed with new commits on the phase branch, pushed to the same PR.
+5. Only once the user says the PR is merged, start the next phase (back to step 1).
 Rules:
 - Before every commit, check that no secret or `.env` file is staged (`git status`, `git diff --cached`).
 - Never force-push, rewrite history on `main`, or delete branches without an explicit request.
-- If `origin` is not configured or a push fails (authentication, rejected), stop and tell the user instead of working around it.
+- If `origin` is not configured, a push fails (authentication, rejected) or `gh` cannot create the PR, stop and tell the user instead of working around it.
 ---
  
 ## Architecture
