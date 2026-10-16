@@ -1,0 +1,12 @@
+# In-cluster only: http://llm/generate, http://llm/structured. Test from the laptop with
+#   kubectl port-forward svc/llm 8001:80
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm
+spec:
+  selector:
+    app: llm
+  ports:
+    - port: 80
+      targetPort: 8000
