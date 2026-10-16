@@ -1,0 +1,32 @@
+# Build first: minikube image build -t orchestrator:latest orchestrator/
+# Requires the Secret (created by hand):
+#   kubectl create secret generic langfuse-credentials --from-literal=LANGFUSE_PUBLIC_KEY=... \
+#     --from-literal=LANGFUSE_SECRET_KEY=... --from-literal=LANGFUSE_BASE_URL=https://cloud.langfuse.com
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orchestrator
+  template:
+    metadata:
+      labels:
+        app: orchestrator
+    spec:
+      containers:
+        - name: orchestrator
+          image: orchestrator:latest
+          imagePullPolicy: Never  # built inside minikube
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: langfuse-credentials
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 5
