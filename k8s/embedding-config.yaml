@@ -1,0 +1,9 @@
+# Shared by the ingestion Job and the retriever: both must embed with the same model.
+# EMBEDDING_DIM must match the vector(...) size in postgres-init-configmap.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: embedding-config
+data:
+  EMBEDDING_MODEL: intfloat/multilingual-e5-small
+  EMBEDDING_DIM: "384"

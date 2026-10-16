@@ -1,0 +1,19 @@
+# One-shot load of SyntecRetrieval into pgvector. Re-run: delete the Job, then apply again.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ingestion
+spec:
+  backoffLimit: 0  # fail fast: read the logs instead of retrying
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: ingestion
+          image: ingestion:latest
+          imagePullPolicy: Never  # built inside minikube
+          envFrom:
+            - configMapRef:
+                name: embedding-config
+            - secretRef:
+                name: postgres-credentials
