@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "deny": ["Read(./.env)", "Read(./.env.*)"],
+    "allow": [
+      "Bash(kubectl get:*)",
+      "Bash(kubectl describe:*)",
+      "Bash(kubectl logs:*)",
+      "Bash(uv run pytest:*)"
+    ]
+  }
+}
