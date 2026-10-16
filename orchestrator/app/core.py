@@ -3,6 +3,7 @@
 from collections.abc import Callable
 from typing import Protocol, TypedDict
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
@@ -19,10 +20,10 @@ class State(TypedDict):
 
 
 class LLMClient(Protocol):
-    def generate(self, prompt: str, system: str) -> str: ...
+    def generate(self, prompt: str, system: str, trace_id: str | None) -> str: ...
 
 
-Search = Callable[[str, int], list[dict]]  # (query, top_k) -> passages
+Search = Callable[[str, int, str | None], list[dict]]  # (query, top_k, trace_id) -> passages
 
 
 def initial_state(question: str) -> State:
@@ -34,13 +35,19 @@ def build_prompt(question: str, docs: list[dict]) -> str:
     return f"Extraits de la convention :\n\n{excerpts}\n\nQuestion : {question}"
 
 
-def build_graph(llm: LLMClient, search: Search, top_k: int) -> CompiledStateGraph:
-    def retrieve(state: State) -> dict:
-        return {"docs": search(state["query"], top_k)}
+def trace_id_of(config: RunnableConfig) -> str | None:
+    """The request's trace id: request metadata, passed in the run config rather than the State."""
+    return config.get("configurable", {}).get("trace_id")
 
-    def generate(state: State) -> dict:
+
+def build_graph(llm: LLMClient, search: Search, top_k: int) -> CompiledStateGraph:
+    # LangGraph passes the run config to nodes that declare a `config` parameter.
+    def retrieve(state: State, config: RunnableConfig) -> dict:
+        return {"docs": search(state["query"], top_k, trace_id_of(config))}
+
+    def generate(state: State, config: RunnableConfig) -> dict:
         prompt = build_prompt(state["question"], state["docs"])
-        return {"answer": llm.generate(prompt, SYSTEM_PROMPT)}
+        return {"answer": llm.generate(prompt, SYSTEM_PROMPT, trace_id_of(config))}
 
     graph = StateGraph(State)
     graph.add_node("retrieve", retrieve)
