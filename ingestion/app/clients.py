@@ -15,7 +15,7 @@ def load_corpus() -> list[dict]:
 
 def load_model(name: str, expected_dim: int) -> SentenceTransformer:
     model = SentenceTransformer(name)
-    dim = model.get_sentence_embedding_dimension()
+    dim = model.get_embedding_dimension()
     if dim != expected_dim:
         raise ValueError(f"{name} produces {dim}-d vectors, config says {expected_dim}")
     return model
