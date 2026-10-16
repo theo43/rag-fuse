@@ -189,4 +189,9 @@ Updated at the end of each phase (see Git workflow, step 3). Records decisions, 
 - Built: `POST /search {query, top_k=5 (1..20)}` → `{results: [{id, doc_id, title, content, score}]}` (score = cosine similarity, chunk-level, no dedup per article) + `GET /health`; Deployment + ClusterIP Service `retriever:80 → 8000`. Baseline on the 100 queries: hit@1 51%, hit@5 86%, hit@10 94% (doc-level).
 - Decisions: `"query: "` prefix, normalized; `VectorStore` protocol in `core.py`, `PgVectorStore` opens one connection per search; model baked into the image via build arg, `HF_HUB_OFFLINE=1` at runtime; with containerd, build args are `--build-opt=opt=build-arg:KEY=VALUE`.
 - Open: retriever uses the Postgres owner credentials (no read-only role); model name duplicated between build arg and `embedding-config`.
+
+**Phase 3 — LLM**
+- Built: `POST /generate {prompt, system?, max_tokens=16000}` → `{text, model, input_tokens, output_tokens}`; `POST /structured {prompt, system?, schema}` → `{data, …}` via `output_config.format` (`json_schema`), schema supplied by the caller; Deployment + ClusterIP Service `llm:80 → 8000`.
+- Decisions: model `claude-haiku-5-5` in ConfigMap `llm-config` (user's choice; no refusal fallback, Haiku has none); key in Secret `anthropic-credentials`, read by the SDK; SDK retries only (2, backoff); text taken from `text` blocks only (thinking blocks skipped); refusal / `max_tokens` → 502, invalid schema → 400. Pods read Secrets at start: after changing one, `kubectl rollout restart`.
+- Open: Langfuse generation tracing and `X-Trace-Id` not done yet (phases 4–5); Anthropic auth errors surface as 500.
  
