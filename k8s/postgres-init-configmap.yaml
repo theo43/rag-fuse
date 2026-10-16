@@ -1,0 +1,17 @@
+# Initial schema, run once by the postgres image on an empty data directory.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+data:
+  init.sql: |
+    CREATE EXTENSION IF NOT EXISTS vector;
+
+    CREATE TABLE IF NOT EXISTS chunks (
+        id        TEXT PRIMARY KEY,          -- document id from the SyntecRetrieval corpus
+        content   TEXT NOT NULL,             -- passage text (without the "passage: " prefix)
+        embedding vector(384) NOT NULL       -- intfloat/multilingual-e5-small
+    );
+
+    CREATE INDEX IF NOT EXISTS chunks_embedding_hnsw
+        ON chunks USING hnsw (embedding vector_cosine_ops);
