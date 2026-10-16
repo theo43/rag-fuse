@@ -1,0 +1,33 @@
+# Build first: minikube image build -t llm:latest llm/
+# Requires the Secret (created by hand):
+#   kubectl create secret generic anthropic-credentials --from-literal=ANTHROPIC_API_KEY=...
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llm
+  template:
+    metadata:
+      labels:
+        app: llm
+    spec:
+      containers:
+        - name: llm
+          image: llm:latest
+          imagePullPolicy: Never  # built inside minikube
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: llm-config
+            - secretRef:
+                name: anthropic-credentials
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 5

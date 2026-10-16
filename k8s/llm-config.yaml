@@ -1,0 +1,7 @@
+# Claude model used by the llm service. Change it here, then `kubectl rollout restart deployment/llm`.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llm-config
+data:
+  ANTHROPIC_MODEL: claude-haiku-5-5
