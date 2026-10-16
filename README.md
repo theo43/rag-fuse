@@ -11,7 +11,7 @@ Learning project: a RAG over the French Syntec collective agreement (dataset `mt
 | `retriever/` | `POST /search`: query → closest chunks with a score. Only service reading the database |
 | `llm/` | `POST /generate` and `POST /structured` (JSON-schema output): thin wrapper around the Claude API |
 | `orchestrator/` | `POST /ask`: question → answer. LangGraph graph `retrieve → generate`, traced in Langfuse |
-| `receiver/` | Coming in phase 5 (public entry point) |
+| `receiver/` | Public entry point (`POST /ask`): creates the trace id, sent as `X-Trace-Id` to every service |
 
 Prerequisites on the Mac: `brew install minikube kubectl uv`.
 
@@ -28,17 +28,24 @@ minikube stop       # switch off; the database survives
 
 ## Ask a question
 
-```bash
-kubectl port-forward svc/orchestrator 8002:80     # leave running in its own terminal tab
+Only the receiver is exposed (NodePort). With minikube's Docker driver on a Mac the node is not reachable directly, so open a tunnel first:
 
-curl -s localhost:8002/ask -H 'content-type: application/json' \
+```bash
+minikube service receiver --url     # tab 1: prints e.g. http://127.0.0.1:56350, keep it open
+```
+
+The port changes every time: copy the printed URL. Then, in another tab:
+
+```bash
+URL=http://127.0.0.1:56350          # the URL printed above
+curl -s $URL/ask -H 'content-type: application/json' \
   -d '{"question": "Y a-t-il un examen médical obligatoire au retour d’un déplacement à l’étranger ?"}' \
   | python3 -c 'import json, sys; r = json.load(sys.stdin); print(r["answer"], "\n", r["sources"], r["trace_id"])'
 ```
 
-The response JSON has the `answer`, the `sources` (chunk ids given to Claude) and the Langfuse `trace_id`: open https://cloud.langfuse.com → Tracing to see the `retrieve` and `generate` steps. Interactive docs: http://localhost:8002/docs.
+The response JSON has the `answer`, the `sources` (chunk ids given to Claude) and the `trace_id`. Open https://cloud.langfuse.com → Tracing and search for that id: one trace holds the graph steps (`ask` → `retrieve`, `generate`) and the Claude call (`claude` → `anthropic.messages.create`, with tokens and cost). The retriever logs the same id: `kubectl logs deployment/retriever | grep <trace_id>`. Interactive docs: `$URL/docs`.
 
-Each service can also be called on its own (`kubectl port-forward svc/retriever 8000:80`, `svc/llm 8001:80`, then `/docs` on that port).
+Prefer a fixed port? `kubectl port-forward svc/receiver 8080:80` works too (it bypasses the NodePort). Internal services can be port-forwarded the same way for debugging (`svc/orchestrator`, `svc/retriever`, `svc/llm`).
 
 ## First-time setup (fresh cluster)
 
@@ -63,6 +70,7 @@ minikube image build -t retriever:latest \
   --build-opt=opt=build-arg:EMBEDDING_MODEL=intfloat/multilingual-e5-small retriever/
 minikube image build -t llm:latest llm/
 minikube image build -t orchestrator:latest orchestrator/
+minikube image build -t receiver:latest receiver/
 
 # 3. Database, then ingestion, then the services
 kubectl apply -f k8s/embedding-config.yaml -f k8s/postgres-init-configmap.yaml \
@@ -100,4 +108,4 @@ The Claude model is set in `k8s/llm-config.yaml` (`ANTHROPIC_MODEL`): edit, `kub
 | `/ask` returns 502 `upstream service error` | `retriever` or `llm` is down or failing: `kubectl get pods`, then its logs |
 | `llm` logs show `401 invalid x-api-key` | Wrong key: recreate `anthropic-credentials`, then restart `llm` |
 | Changed a Secret or ConfigMap, nothing happens | Pods read them only at start: `kubectl rollout restart deployment/<name>` |
-| `connection refused` on `localhost:800x` | The port-forward is not running, or broke after a pod restart: start it again |
+| `connection refused` on the receiver URL | The `minikube service` tunnel (or port-forward) is closed, or broke after a restart: start it again and use the new URL |
