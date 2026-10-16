@@ -1,0 +1,33 @@
+# Build first (model baked into the image; minikube uses containerd/BuildKit, hence the opt= syntax):
+#   minikube image build -t retriever:latest \
+#     --build-opt=opt=build-arg:EMBEDDING_MODEL=intfloat/multilingual-e5-small retriever/
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: retriever
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: retriever
+  template:
+    metadata:
+      labels:
+        app: retriever
+    spec:
+      containers:
+        - name: retriever
+          image: retriever:latest
+          imagePullPolicy: Never  # built inside minikube
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: embedding-config
+            - secretRef:
+                name: postgres-credentials
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 5

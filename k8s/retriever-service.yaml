@@ -1,0 +1,12 @@
+# In-cluster only: http://retriever/search. Test from the laptop with
+#   kubectl port-forward svc/retriever 8000:80
+apiVersion: v1
+kind: Service
+metadata:
+  name: retriever
+spec:
+  selector:
+    app: retriever
+  ports:
+    - port: 80
+      targetPort: 8000

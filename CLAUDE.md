@@ -184,4 +184,9 @@ Updated at the end of each phase (see Git workflow, step 3). Records decisions, 
 - Built: Job `ingestion` loading `mteb/SyntecRetrieval` (config `corpus`, split `test`): 90 articles → 124 rows in `chunks(id "<doc_id>#<n>", doc_id, title, content, embedding vector(384))`, HNSW cosine index.
 - Decisions: paragraphs grouped up to 1500 chars; embedded text `"passage: " + title + "\n" + content`, normalized; model/dim in ConfigMap `embedding-config` (shared with retriever); images built with `minikube image build`, `imagePullPolicy: Never`; `torch` from the PyTorch CPU index on Linux; idempotent insert (`ON CONFLICT DO NOTHING`).
 - Open: model re-downloaded from HF on each run; search quality not checked yet (phase 2).
+
+**Phase 2 — Retriever**
+- Built: `POST /search {query, top_k=5 (1..20)}` → `{results: [{id, doc_id, title, content, score}]}` (score = cosine similarity, chunk-level, no dedup per article) + `GET /health`; Deployment + ClusterIP Service `retriever:80 → 8000`. Baseline on the 100 queries: hit@1 51%, hit@5 86%, hit@10 94% (doc-level).
+- Decisions: `"query: "` prefix, normalized; `VectorStore` protocol in `core.py`, `PgVectorStore` opens one connection per search; model baked into the image via build arg, `HF_HUB_OFFLINE=1` at runtime; with containerd, build args are `--build-opt=opt=build-arg:KEY=VALUE`.
+- Open: retriever uses the Postgres owner credentials (no read-only role); model name duplicated between build arg and `embedding-config`.
  
