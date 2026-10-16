@@ -24,6 +24,7 @@ The repository is hosted on the user's GitHub account (remote `origin`). Each ph
 1. **Start of a phase**: update `main` (`git pull`), then create a branch `phase-<N>-<short-name>` from it (e.g. `phase-2-retriever`).
 2. **During the phase**: one logical change per commit (e.g. schema, then endpoint, then tests) on the phase branch, using Conventional Commits (`feat:`, `fix:`, `test:`, `chore:`, `docs:`, `refactor:`). Commit without asking, but never on `main` directly.
 3. **End of the phase**: run the tests and the manual check defined for the phase, then:
+   - add the phase's entry to the "Status" section at the end of this file (2–3 lines: what was built, key decisions, anything left open), committed as `docs: update status for phase <N>` on the phase branch, so it is part of the PR
    - `git push -u origin phase-<N>-<short-name>`
    - open a pull request against `main` with `gh pr create`, titled `Phase <N>: <short-name>`, whose description covers what was built, how it was verified, and anything left open
    - give the user the PR link and a short summary
@@ -168,4 +169,19 @@ Each phase ends with something that runs and can be checked by hand.
 5. **Receiver** — entry point + `trace_id` generation and propagation; end-to-end test.
 6. **First decision** — grading + rewriting loop (step 2 of the graph).
 7. **Evaluation** — compare linear vs agentic on the SyntecRetrieval questions: answer quality, latency, number of LLM calls.
+
+---
+
+## Status
+
+Updated at the end of each phase (see Git workflow, step 3). Records decisions, not code: read this before starting a phase.
+
+**Phase 0 — Database** (merged)
+- Built: Postgres StatefulSet (`pgvector/pgvector:pg16`, 1Gi PVC `data-postgres-0`), headless Service `postgres:5432`, init SQL inline in ConfigMap `postgres-init`.
+- Decisions: credentials from Secret `postgres-credentials` via `envFrom`; init SQL only runs on an empty volume, so a schema change means deleting the StatefulSet + PVC and re-applying.
+
+**Phase 1 — Ingestion** (merged, PR #1)
+- Built: Job `ingestion` loading `mteb/SyntecRetrieval` (config `corpus`, split `test`): 90 articles → 124 rows in `chunks(id "<doc_id>#<n>", doc_id, title, content, embedding vector(384))`, HNSW cosine index.
+- Decisions: paragraphs grouped up to 1500 chars; embedded text `"passage: " + title + "\n" + content`, normalized; model/dim in ConfigMap `embedding-config` (shared with retriever); images built with `minikube image build`, `imagePullPolicy: Never`; `torch` from the PyTorch CPU index on Linux; idempotent insert (`ON CONFLICT DO NOTHING`).
+- Open: model re-downloaded from HF on each run; search quality not checked yet (phase 2).
  
