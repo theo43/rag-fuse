@@ -1,0 +1,26 @@
+# Build first: minikube image build -t receiver:latest receiver/
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: receiver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: receiver
+  template:
+    metadata:
+      labels:
+        app: receiver
+    spec:
+      containers:
+        - name: receiver
+          image: receiver:latest
+          imagePullPolicy: Never  # built inside minikube
+          ports:
+            - containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 5

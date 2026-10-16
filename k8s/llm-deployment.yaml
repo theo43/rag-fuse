@@ -26,6 +26,8 @@ spec:
                 name: llm-config
             - secretRef:
                 name: anthropic-credentials
+            - secretRef:
+                name: langfuse-credentials  # generation tracing
           readinessProbe:
             httpGet:
               path: /health

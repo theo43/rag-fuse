@@ -1,6 +1,7 @@
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Header, Request
 from pydantic import BaseModel, Field
 
 from app import clients, core
@@ -18,6 +19,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="retriever", lifespan=lifespan)
+logger = logging.getLogger("uvicorn.error")  # uvicorn's logger: printed at INFO level
 
 
 class SearchRequest(BaseModel):
@@ -30,7 +32,8 @@ class SearchResponse(BaseModel):
 
 
 @app.post("/search")
-def search(body: SearchRequest, request: Request) -> SearchResponse:
+def search(body: SearchRequest, request: Request, x_trace_id: str | None = Header(default=None)) -> SearchResponse:
+    logger.info("search trace_id=%s top_k=%d query=%r", x_trace_id, body.top_k, body.query)
     passages = core.search(body.query, body.top_k, request.app.state.embed, request.app.state.store)
     return SearchResponse(results=passages)
 

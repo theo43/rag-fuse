@@ -2,7 +2,8 @@ import json
 from contextlib import asynccontextmanager
 
 import anthropic
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Request
+from langfuse import get_client
 from pydantic import BaseModel, Field
 
 from app import clients, core
@@ -14,6 +15,7 @@ async def lifespan(app: FastAPI):
     app.state.model = Settings().anthropic_model
     app.state.client = clients.make_client()
     yield
+    get_client().flush()  # send the last Langfuse generations before exiting
 
 
 app = FastAPI(title="llm", lifespan=lifespan)
@@ -43,10 +45,12 @@ class StructuredResponse(Usage):
     data: dict
 
 
-def call_claude(request: Request, body: GenerateRequest, schema: dict | None = None) -> core.LLMResult:
+def call_claude(
+    request: Request, body: GenerateRequest, trace_id: str | None, schema: dict | None = None
+) -> core.LLMResult:
     params = core.build_params(request.app.state.model, body.prompt, body.system, body.max_tokens, schema)
     try:
-        return core.read_result(clients.create_message(request.app.state.client, params))
+        return core.read_result(clients.create_message(request.app.state.client, params, trace_id))
     except core.LLMError as e:
         raise HTTPException(status_code=502, detail=str(e))
     except anthropic.BadRequestError as e:  # e.g. an invalid JSON schema
@@ -54,15 +58,19 @@ def call_claude(request: Request, body: GenerateRequest, schema: dict | None = N
 
 
 @app.post("/generate")
-def generate(body: GenerateRequest, request: Request) -> GenerateResponse:
-    result = call_claude(request, body)
+def generate(
+    body: GenerateRequest, request: Request, x_trace_id: str | None = Header(default=None)
+) -> GenerateResponse:
+    result = call_claude(request, body, x_trace_id)
     return GenerateResponse(text=result.text, model=result.model,
                             input_tokens=result.input_tokens, output_tokens=result.output_tokens)
 
 
 @app.post("/structured")
-def structured(body: StructuredRequest, request: Request) -> StructuredResponse:
-    result = call_claude(request, body, body.schema_)
+def structured(
+    body: StructuredRequest, request: Request, x_trace_id: str | None = Header(default=None)
+) -> StructuredResponse:
+    result = call_claude(request, body, x_trace_id, body.schema_)
     return StructuredResponse(data=json.loads(result.text), model=result.model,
                               input_tokens=result.input_tokens, output_tokens=result.output_tokens)
 

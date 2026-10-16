@@ -1,0 +1,14 @@
+# The only service exposed outside the cluster. On a Mac (Docker driver) the node IP is not reachable,
+# so open a tunnel and use the URL it prints:  minikube service receiver --url
+apiVersion: v1
+kind: Service
+metadata:
+  name: receiver
+spec:
+  type: NodePort
+  selector:
+    app: receiver
+  ports:
+    - port: 80
+      targetPort: 8000
+      nodePort: 30080
