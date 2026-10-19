@@ -41,16 +41,22 @@ def run(mode: str) -> None:
         rows.append(row)
         print(f"[{i}/{len(questions)}] {latency_s:.1f}s hit={row['hit']} {row['verdict']}: {question['question'][:60]}")
 
+    path = RESULTS_DIR / f"{mode}.jsonl"
+    write_rows(path, rows)  # answers and verdicts are kept even if fetching the stats fails
+
     time.sleep(LANGFUSE_DELAY)
     for row in rows:
         row.update(core.trace_stats(clients.fetch_observations(settings, row["trace_id"], started)))
         if row["llm_calls"] == 0:
             print(f"warning: trace {row['trace_id']} has no LLM call in Langfuse (not ingested yet?)")
 
-    RESULTS_DIR.mkdir(exist_ok=True)
-    path = RESULTS_DIR / f"{mode}.jsonl"
-    path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows))
+    write_rows(path, rows)
     print(f"{len(rows)} results written to {path}")
+
+
+def write_rows(path: Path, rows: list[dict]) -> None:
+    RESULTS_DIR.mkdir(exist_ok=True)
+    path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows))
 
 
 def summary() -> None:
