@@ -6,6 +6,22 @@ from statistics import mean, median
 SAMPLE_SIZE = 30
 SEED = 0  # fixed: every run evaluates the same questions
 
+VERDICTS = ["correct", "partial", "incorrect", "not_found"]
+JUDGE_SYSTEM_PROMPT = """Tu évalues les réponses d'un assistant RH sur la convention collective Syntec.
+On te donne la question, l'article de la convention qui y répond (la référence) et la réponse de l'assistant.
+Verdict :
+- correct : la réponse est juste et cohérente avec l'article de référence ;
+- partial : la réponse est en partie juste, ou incomplète sur un point important ;
+- incorrect : la réponse contredit l'article de référence ou invente des informations ;
+- not_found : l'assistant dit ne pas avoir trouvé l'information.
+Justifie en une phrase."""
+JUDGE_SCHEMA = {
+    "type": "object",
+    "properties": {"verdict": {"type": "string", "enum": VERDICTS}, "reason": {"type": "string"}},
+    "required": ["verdict", "reason"],
+    "additionalProperties": False,
+}
+
 
 def sample_questions(questions: list[dict]) -> list[dict]:
     """A fixed random subset. Random, not the first ones: the questions are ordered by article."""
@@ -31,6 +47,10 @@ def answer_row(question: dict, response: dict, latency_s: float) -> dict:
     }
 
 
+def build_judge_prompt(question: str, reference: str, answer: str) -> str:
+    return f"Question : {question}\n\nArticle de référence :\n{reference}\n\nRéponse de l'assistant :\n{answer}"
+
+
 def trace_stats(observations: list[dict]) -> dict:
     """LLM calls, searches, tokens and cost of one question, from its Langfuse observations."""
     generations = [o for o in observations if o["type"] == "GENERATION"]
@@ -47,6 +67,7 @@ def summarize(rows: list[dict]) -> dict:
     latencies = [r["latency_s"] for r in rows]
     return {
         "questions": len(rows),
+        **{f"{verdict} rate": mean(r["verdict"] == verdict for r in rows) for verdict in VERDICTS},
         "hit rate": mean(r["hit"] for r in rows),
         "fallback rate": mean(r["fallback"] for r in rows),
         "latency mean (s)": mean(latencies),

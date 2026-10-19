@@ -1,4 +1,12 @@
-from app.core import SAMPLE_SIZE, answer_row, sample_questions, summarize, to_markdown, trace_stats
+from app.core import (
+    SAMPLE_SIZE,
+    answer_row,
+    build_judge_prompt,
+    sample_questions,
+    summarize,
+    to_markdown,
+    trace_stats,
+)
 
 QUESTION = {"id": "7", "question": "Les CDD sont-ils couverts ?", "gold_doc_id": "article-10"}
 
@@ -41,15 +49,22 @@ def test_trace_stats_counts_generations_and_searches():
 
 def test_summary_table():
     rows = [
-        {"hit": True, "fallback": False, "latency_s": 2.0, "llm_calls": 1, "searches": 1,
+        {"verdict": "correct", "hit": True, "fallback": False, "latency_s": 2.0, "llm_calls": 1, "searches": 1,
          "input_tokens": 1000, "output_tokens": 200, "cost_usd": 0.001},
-        {"hit": False, "fallback": True, "latency_s": 4.0, "llm_calls": 5, "searches": 3,
+        {"verdict": "not_found", "hit": False, "fallback": True, "latency_s": 4.0, "llm_calls": 5, "searches": 3,
          "input_tokens": 3000, "output_tokens": 600, "cost_usd": 0.003},
     ]
     summary = summarize(rows)
     assert summary["hit rate"] == 0.5
+    assert summary["correct rate"] == 0.5
+    assert summary["incorrect rate"] == 0
     assert summary["latency median (s)"] == 3.0
     table = to_markdown({"linear": summary, "agentic": summary})
     assert table.splitlines()[0] == "| metric | linear | agentic |"
     assert "| hit rate | 50% | 50% |" in table
     assert "| tokens / question | 2,400 | 2,400 |" in table
+
+
+def test_judge_prompt_has_question_reference_and_answer():
+    prompt = build_judge_prompt("Q ?", "Article 10 : CDD\nTexte.", "Oui.")
+    assert prompt.index("Q ?") < prompt.index("Article 10 : CDD") < prompt.index("Oui.")

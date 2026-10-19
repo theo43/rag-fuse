@@ -17,8 +17,24 @@ def load_questions() -> list[dict]:
     return [{"id": q["_id"], "question": q["text"], "gold_doc_id": gold[q["_id"]]} for q in queries]
 
 
+def load_articles() -> dict[str, str]:
+    """Full text of every article (title + text), by doc id: the reference the judge compares against."""
+    return {doc["_id"]: f"{doc['title']}\n{doc['text']}" for doc in load_dataset(DATASET_NAME, "corpus", split="test")}
+
+
 def make_receiver(settings: Settings) -> httpx.Client:
     return httpx.Client(base_url=settings.receiver_url, timeout=TIMEOUT)
+
+
+def make_llm(settings: Settings) -> httpx.Client:
+    return httpx.Client(base_url=settings.llm_url, timeout=TIMEOUT)
+
+
+def judge(llm: httpx.Client, prompt: str, system: str, schema: dict) -> dict:
+    """Structured call to the llm service. No trace header: judge calls stay out of the evaluated traces."""
+    response = llm.post("/structured", json={"prompt": prompt, "system": system, "schema": schema})
+    response.raise_for_status()
+    return response.json()["data"]
 
 
 def ask(receiver: httpx.Client, question: str) -> tuple[dict, float]:

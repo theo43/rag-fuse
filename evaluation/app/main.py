@@ -23,19 +23,23 @@ LANGFUSE_DELAY = 20  # seconds; traces are sent in the background, give Langfuse
 def run(mode: str) -> None:
     """`mode` only names the results file: the orchestrator's GRAPH_MODE decides which graph runs."""
     settings = Settings()
-    receiver = clients.make_receiver(settings)
+    receiver, llm = clients.make_receiver(settings), clients.make_llm(settings)
     questions = core.sample_questions(clients.load_questions())
+    articles = clients.load_articles()
     started = datetime.now(timezone.utc)
 
     rows = []
     for i, question in enumerate(questions, 1):
         try:
             response, latency_s = clients.ask(receiver, question["question"])
+            row = core.answer_row(question, response, latency_s)
+            prompt = core.build_judge_prompt(question["question"], articles[question["gold_doc_id"]], row["answer"])
+            row.update(clients.judge(llm, prompt, core.JUDGE_SYSTEM_PROMPT, core.JUDGE_SCHEMA))
         except httpx.HTTPError as e:
             print(f"[{i}/{len(questions)}] question {question['id']} skipped: {e}")
             continue
-        rows.append(core.answer_row(question, response, latency_s))
-        print(f"[{i}/{len(questions)}] {latency_s:.1f}s hit={rows[-1]['hit']} {question['question'][:60]}")
+        rows.append(row)
+        print(f"[{i}/{len(questions)}] {latency_s:.1f}s hit={row['hit']} {row['verdict']}: {question['question'][:60]}")
 
     time.sleep(LANGFUSE_DELAY)
     for row in rows:
