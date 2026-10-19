@@ -43,8 +43,9 @@ class FakeSearch:
         return DOCS
 
 
-def run(llm, search, question="q", max_attempts=2, config=None):
-    return build_graph(llm, search, top_k=3, max_attempts=max_attempts).invoke(initial_state(question), config=config)
+def run(llm, search, question="q", max_attempts=2, mode="agentic", config=None):
+    graph = build_graph(llm, search, top_k=3, max_attempts=max_attempts, mode=mode)
+    return graph.invoke(initial_state(question), config=config)
 
 
 def test_route_after_grade():
@@ -82,6 +83,15 @@ def test_fallback_after_max_attempts():
     assert final["attempts"] == 2
     assert final["docs_relevant"] is False
     assert final["answer"] == FALLBACK_ANSWER
+    assert final["docs"] == []  # no sources for the fallback answer
+
+
+def test_linear_mode_skips_grading():
+    llm, search = FakeLLM(grades=[]), FakeSearch()
+    final = run(llm, search, mode="linear")
+    assert [c[0] for c in llm.calls] == ["generate"]
+    assert final["docs"] == DOCS
+    assert final["answer"] == "Oui (Article 10)."
 
 
 def test_trace_id_from_run_config_reaches_search_and_llm():
