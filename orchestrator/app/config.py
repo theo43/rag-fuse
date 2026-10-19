@@ -10,3 +10,4 @@ class Settings(BaseSettings):
     retriever_url: str = "http://retriever"
     llm_url: str = "http://llm"
     top_k: int = 5
+    max_attempts: int = 2  # query rewrites before giving up (fallback answer)

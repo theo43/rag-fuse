@@ -30,6 +30,12 @@ class HttpLLMClient:
         response.raise_for_status()
         return response.json()["text"]
 
+    def structured(self, prompt: str, system: str, schema: dict, trace_id: str | None) -> dict:
+        response = self.http.post("/structured", json={"prompt": prompt, "system": system, "schema": schema},
+                                  headers=trace_headers(trace_id))
+        response.raise_for_status()
+        return response.json()["data"]
+
 
 def make_search(base_url: str) -> Search:
     """`search(query, top_k, trace_id)` backed by the retriever service."""

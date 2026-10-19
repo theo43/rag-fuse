@@ -10,7 +10,7 @@ Learning project: a RAG over the French Syntec collective agreement (dataset `mt
 | `ingestion/` | One-shot Job: loads the corpus, chunks, embeds (`multilingual-e5-small`), inserts into Postgres + pgvector |
 | `retriever/` | `POST /search`: query → closest chunks with a score. Only service reading the database |
 | `llm/` | `POST /generate` and `POST /structured` (JSON-schema output): thin wrapper around the Claude API |
-| `orchestrator/` | `POST /ask`: question → answer. LangGraph graph `retrieve → generate`, traced in Langfuse |
+| `orchestrator/` | `POST /ask`: question → answer. LangGraph graph `retrieve → grade_docs → generate`, rewriting the query and retrying when the passages are not relevant (up to `MAX_ATTEMPTS`, default 2), traced in Langfuse |
 | `receiver/` | Public entry point (`POST /ask`): creates the trace id, sent as `X-Trace-Id` to every service |
 
 Prerequisites on the Mac: `brew install minikube kubectl uv`.
@@ -43,7 +43,7 @@ curl -s $URL/ask -H 'content-type: application/json' \
   | python3 -c 'import json, sys; r = json.load(sys.stdin); print(r["answer"], "\n", r["sources"], r["trace_id"])'
 ```
 
-The response JSON has the `answer`, the `sources` (chunk ids given to Claude) and the `trace_id`. Open https://cloud.langfuse.com → Tracing and search for that id: one trace holds the graph steps (`ask` → `retrieve`, `generate`) and the Claude call (`claude` → `anthropic.messages.create`, with tokens and cost). The retriever logs the same id: `kubectl logs deployment/retriever | grep <trace_id>`. Interactive docs: `$URL/docs`.
+The response JSON has the `answer`, the `sources` (chunk ids the answer is based on, empty when nothing relevant was found) and the `trace_id`. Open https://cloud.langfuse.com → Tracing and search for that id: one trace holds the graph steps (`ask` → `retrieve`, `grade_docs`, possibly `rewrite_query` and `retrieve` again, then `generate` or `fallback`), each Claude call nested under its step (`claude` → `anthropic.messages.create`, with tokens and cost). The retriever logs the same id: `kubectl logs deployment/retriever | grep <trace_id>`. Interactive docs: `$URL/docs`.
 
 Prefer a fixed port? `kubectl port-forward svc/receiver 8080:80` works too (it bypasses the NodePort). Internal services can be port-forwarded the same way for debugging (`svc/orchestrator`, `svc/retriever`, `svc/llm`).
 
