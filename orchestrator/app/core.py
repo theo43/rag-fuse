@@ -22,6 +22,10 @@ class State(TypedDict):
 class LLMClient(Protocol):
     def generate(self, prompt: str, system: str, trace_id: str | None) -> str: ...
 
+    def structured(self, prompt: str, system: str, schema: dict, trace_id: str | None) -> dict:
+        """JSON object matching `schema` (a JSON Schema)."""
+        ...
+
 
 Search = Callable[[str, int, str | None], list[dict]]  # (query, top_k, trace_id) -> passages
 
