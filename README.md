@@ -12,6 +12,7 @@ Learning project: a RAG over the French Syntec collective agreement (dataset `mt
 | `llm/` | `POST /generate` and `POST /structured` (JSON-schema output): thin wrapper around the Claude API |
 | `orchestrator/` | `POST /ask`: question → answer. LangGraph graph `retrieve → grade_docs → generate`, rewriting the query and retrying when the passages are not relevant (up to `MAX_ATTEMPTS`, default 2), traced in Langfuse |
 | `receiver/` | Public entry point (`POST /ask`): creates the trace id, sent as `X-Trace-Id` to every service |
+| `evaluation/` | Local script (not deployed): asks 30 dataset questions through the receiver, judges the answers with Claude, compares linear vs agentic. Results in `evaluation/results/` |
 
 Prerequisites on the Mac: `brew install minikube kubectl uv`.
 
@@ -99,6 +100,27 @@ kubectl delete job ingestion && kubectl apply -f k8s/ingestion-job.yaml         
 ```
 
 The Claude model is set in `k8s/llm-config.yaml` (`ANTHROPIC_MODEL`): edit, `kubectl apply -f k8s/llm-config.yaml`, then `kubectl rollout restart deployment/llm`.
+
+## Evaluation (linear vs agentic)
+
+```bash
+kubectl port-forward svc/receiver 8080:80     # tab 1
+kubectl port-forward svc/llm 8081:80          # tab 2 (the judge)
+
+# tab 3: Langfuse keys from the Secret (LLM calls, tokens and cost are read from the traces)
+secret() { kubectl get secret langfuse-credentials -o jsonpath="{.data.$1}" | base64 -d; }
+export LANGFUSE_BASE_URL=$(secret LANGFUSE_BASE_URL) LANGFUSE_PUBLIC_KEY=$(secret LANGFUSE_PUBLIC_KEY) \
+  LANGFUSE_SECRET_KEY=$(secret LANGFUSE_SECRET_KEY)
+cd evaluation
+
+kubectl set env deployment/orchestrator GRAPH_MODE=linear && kubectl rollout status deployment/orchestrator
+uv run python -m app.main run --mode linear      # ~5 min: results/linear.jsonl
+kubectl set env deployment/orchestrator GRAPH_MODE- && kubectl rollout status deployment/orchestrator  # back to agentic
+uv run python -m app.main run --mode agentic     # results/agentic.jsonl
+uv run python -m app.main summary                # table, also written to results/summary.md
+```
+
+Each `results/<mode>.jsonl` line holds the answer, sources, the judge's verdict and reason, latency and the trace stats: handy to read the failures one by one.
 
 ## Troubleshooting
 
