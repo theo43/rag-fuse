@@ -17,6 +17,7 @@ async def lifespan(app: FastAPI):
         clients.HttpLLMClient(settings.llm_url),
         clients.make_search(settings.retriever_url),
         settings.top_k,
+        settings.max_attempts,
     )
     yield
     get_client().flush()  # traces are sent in the background: send what is left before exiting
@@ -31,7 +32,7 @@ class AskRequest(BaseModel):
 
 class AskResponse(BaseModel):
     answer: str
-    sources: list[str]  # ids of the chunks given to the LLM
+    sources: list[str]  # ids of the chunks the answer is based on (empty for the fallback answer)
     trace_id: str | None  # Langfuse trace of this run
 
 
@@ -53,7 +54,7 @@ def ask(body: AskRequest, request: Request, x_trace_id: str | None = Header(defa
         raise HTTPException(status_code=502, detail=f"upstream service error: {e}")
     return AskResponse(
         answer=final["answer"],
-        sources=[doc["id"] for doc in final["docs"]],
+        sources=[doc["id"] for doc in final["docs"]] if final["docs_relevant"] else [],
         trace_id=langfuse_handler.last_trace_id,
     )
 
