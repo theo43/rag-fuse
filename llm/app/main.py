@@ -46,11 +46,12 @@ class StructuredResponse(Usage):
 
 
 def call_claude(
-    request: Request, body: GenerateRequest, trace_id: str | None, schema: dict | None = None
+    request: Request, body: GenerateRequest, traceparent: str | None, schema: dict | None = None
 ) -> core.LLMResult:
     params = core.build_params(request.app.state.model, body.prompt, body.system, body.max_tokens, schema)
+    trace_context = core.parse_traceparent(traceparent) if traceparent else None
     try:
-        return core.read_result(clients.create_message(request.app.state.client, params, trace_id))
+        return core.read_result(clients.create_message(request.app.state.client, params, trace_context))
     except core.LLMError as e:
         raise HTTPException(status_code=502, detail=str(e))
     except anthropic.BadRequestError as e:  # e.g. an invalid JSON schema
@@ -59,18 +60,18 @@ def call_claude(
 
 @app.post("/generate")
 def generate(
-    body: GenerateRequest, request: Request, x_trace_id: str | None = Header(default=None)
+    body: GenerateRequest, request: Request, traceparent: str | None = Header(default=None)
 ) -> GenerateResponse:
-    result = call_claude(request, body, x_trace_id)
+    result = call_claude(request, body, traceparent)
     return GenerateResponse(text=result.text, model=result.model,
                             input_tokens=result.input_tokens, output_tokens=result.output_tokens)
 
 
 @app.post("/structured")
 def structured(
-    body: StructuredRequest, request: Request, x_trace_id: str | None = Header(default=None)
+    body: StructuredRequest, request: Request, traceparent: str | None = Header(default=None)
 ) -> StructuredResponse:
-    result = call_claude(request, body, x_trace_id, body.schema_)
+    result = call_claude(request, body, traceparent, body.schema_)
     return StructuredResponse(data=json.loads(result.text), model=result.model,
                               input_tokens=result.input_tokens, output_tokens=result.output_tokens)
 

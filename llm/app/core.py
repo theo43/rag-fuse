@@ -35,6 +35,12 @@ def build_params(
     return params
 
 
+def parse_traceparent(traceparent: str) -> dict:
+    """Langfuse `trace_context` from a W3C `traceparent` header (version-trace_id-parent_span_id-flags)."""
+    _, trace_id, parent_span_id, _ = traceparent.split("-")
+    return {"trace_id": trace_id, "parent_span_id": parent_span_id}
+
+
 def read_result(response) -> LLMResult:
     """Extract the answer from a Messages API response, or raise `LLMError`."""
     if response.stop_reason == "refusal":
