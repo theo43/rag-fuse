@@ -19,11 +19,19 @@ Réponds en français, uniquement à partir des extraits fournis, et cite les ar
 Si les extraits ne permettent pas de répondre, dis-le clairement au lieu d'inventer."""
 
 GRADE_SYSTEM_PROMPT = """Tu évalues des extraits de la convention collective Syntec.
-Indique si au moins un extrait contient l'information nécessaire pour répondre à la question."""
+D'abord, recopie l'identifiant et la phrase de l'extrait qui répond à la question (chaîne vide si aucun).
+Ensuite, indique la couverture :
+- complete : un extrait répond explicitement à toute la question ;
+- partial : un extrait répond à une partie de la question seulement ;
+- none : aucun extrait ne répond (traiter d'un sujet proche ne suffit pas)."""
 GRADE_SCHEMA = {
     "type": "object",
-    "properties": {"relevant": {"type": "boolean"}},
-    "required": ["relevant"],
+    # Property order matters: the model quotes its evidence before giving the verdict.
+    "properties": {
+        "answering_excerpt": {"type": "string"},
+        "coverage": {"type": "string", "enum": ["complete", "partial", "none"]},
+    },
+    "required": ["answering_excerpt", "coverage"],
     "additionalProperties": False,
 }
 
@@ -102,7 +110,7 @@ def build_graph(
     def grade_docs(state: State, config: RunnableConfig) -> dict:
         prompt = build_prompt(state["question"], state["docs"])
         grade = llm.structured(prompt, GRADE_SYSTEM_PROMPT, GRADE_SCHEMA, trace_id_of(config))
-        return {"docs_relevant": grade["relevant"]}
+        return {"docs_relevant": grade["coverage"] == "complete"}  # partial: worth a rewrite
 
     def rewrite_query(state: State, config: RunnableConfig) -> dict:
         prompt = build_rewrite_prompt(state["question"], state["query"])
