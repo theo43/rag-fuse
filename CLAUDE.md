@@ -210,3 +210,8 @@ Updated at the end of each phase (see Git workflow, step 3). Records decisions, 
 - Built: orchestrator sends `traceparent: 00-<trace_id>-<span_id>-01` (span id = current OTel span = the calling node's Langfuse span); `llm` parses it into `trace_context={trace_id, parent_span_id}`. Trace tree now `ask` → `retrieve`, `generate` → `claude` → `anthropic.messages.create`.
 - Decisions: W3C `traceparent` rather than a custom header; `llm` reads only `traceparent` (no longer `X-Trace-Id`), retriever unchanged; `opentelemetry-api` declared in the orchestrator (was transitive via langfuse). Langfuse's legacy `GET /api/public/traces/{id}` is unavailable on this (new) org: use `/api/public/v2/observations?traceId=…`.
 - Open: a malformed `traceparent` makes `llm` return 500 (internal header only).
+
+**Phase 6 — First decision**
+- Built: graph step 2 (`retrieve → grade_docs → generate | rewrite_query → retrieve | fallback`); `LLMClient.structured` (→ `/structured`); `MAX_ATTEMPTS` in config (default 2 = at most 3 searches); `/ask` `sources` empty for the fallback. Checked: an in-corpus question answers directly, an out-of-corpus one (SMIC 2026) rewrites twice then falls back.
+- Decisions: one grading call over all passages, schema `{relevant: bool}` (no reason, no per-passage grading); rewrite sees the question + last query, schema `{query: str}`; fixed French fallback message (no LLM call); routing in `route_after_grade(state, max_attempts)`, a pure function.
+- Open: grading can be lenient (a loosely phrased question was graded relevant, then `generate` said the passages didn't fully answer); Langfuse shows the router as a `RunnableCallable` span under `grade_docs`. To measure in phase 7.
