@@ -65,6 +65,13 @@ def test_relevant_docs_go_straight_to_generate():
     assert final["attempts"] == 0
 
 
+def test_partial_coverage_goes_to_generate():
+    llm, search = FakeLLM(grades=["partial"]), FakeSearch()
+    final = run(llm, search)
+    assert [c[0] for c in llm.calls] == ["grade", "generate"]
+    assert final["attempts"] == 0
+
+
 def test_irrelevant_docs_rewrite_the_query_and_search_again():
     llm, search = FakeLLM(grades=["none", "complete"]), FakeSearch()
     final = run(llm, search)
@@ -76,7 +83,7 @@ def test_irrelevant_docs_rewrite_the_query_and_search_again():
 
 
 def test_fallback_after_max_attempts():
-    llm, search = FakeLLM(grades=["none", "partial", "none"]), FakeSearch()
+    llm, search = FakeLLM(grades=["none", "none", "none"]), FakeSearch()
     final = run(llm, search, max_attempts=2)
     assert [c[0] for c in llm.calls] == ["grade", "rewrite", "grade", "rewrite", "grade"]
     assert len(search.calls) == 3

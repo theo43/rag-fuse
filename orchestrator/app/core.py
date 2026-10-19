@@ -110,7 +110,8 @@ def build_graph(
     def grade_docs(state: State, config: RunnableConfig) -> dict:
         prompt = build_prompt(state["question"], state["docs"])
         grade = llm.structured(prompt, GRADE_SYSTEM_PROMPT, GRADE_SCHEMA, trace_id_of(config))
-        return {"docs_relevant": grade["coverage"] == "complete"}  # partial: worth a rewrite
+        # Only "none" triggers a rewrite: retrying on "partial" ended in fallbacks that discarded usable passages.
+        return {"docs_relevant": grade["coverage"] != "none"}
 
     def rewrite_query(state: State, config: RunnableConfig) -> dict:
         prompt = build_rewrite_prompt(state["question"], state["query"])
