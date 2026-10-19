@@ -8,14 +8,16 @@ def make_client() -> anthropic.Anthropic:
     return anthropic.Anthropic()
 
 
-def create_message(client: anthropic.Anthropic, params: dict, trace_id: str | None) -> anthropic.types.Message:
-    """Call Claude. With a trace id, the call is recorded in that Langfuse trace.
+def create_message(
+    client: anthropic.Anthropic, params: dict, trace_context: dict | None
+) -> anthropic.types.Message:
+    """Call Claude. With a trace context, the call is recorded in that Langfuse trace, under its parent span.
 
     The Langfuse SDK instruments the Anthropic SDK by itself: every `messages.create` becomes a generation
-    (model, input/output, tokens incl. thinking, cost). This span only attaches it to the request's trace.
+    (model, input/output, tokens incl. thinking, cost). This span only attaches it to the caller's span.
     """
-    if trace_id is None:
+    if trace_context is None:
         return client.messages.create(**params)
 
-    with get_client().start_as_current_observation(trace_context={"trace_id": trace_id}, name="claude"):
+    with get_client().start_as_current_observation(trace_context=trace_context, name="claude"):
         return client.messages.create(**params)

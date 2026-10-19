@@ -1,4 +1,5 @@
 import httpx
+from opentelemetry import trace
 
 from app.core import Search
 
@@ -6,8 +7,15 @@ TIMEOUT = 60.0  # seconds; an LLM answer takes longer than httpx's 5 s default
 
 
 def trace_headers(trace_id: str | None) -> dict:
-    """Propagate the request's trace id to the downstream services."""
-    return {"X-Trace-Id": trace_id} if trace_id else {}
+    """Propagate the request's trace to the downstream services.
+
+    `traceparent` (W3C) also carries the id of the current span: the Langfuse span of the calling node,
+    so that the callee's spans nest under it. Format: version-trace_id-parent_span_id-flags.
+    """
+    if not trace_id:
+        return {}
+    span_id = trace.get_current_span().get_span_context().span_id
+    return {"X-Trace-Id": trace_id, "traceparent": f"00-{trace_id}-{span_id:016x}-01"}
 
 
 class HttpLLMClient:

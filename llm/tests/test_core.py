@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.core import LLMError, LLMResult, build_params, read_result
+from app.core import LLMError, LLMResult, build_params, parse_traceparent, read_result
 
 
 def fake_response(content, stop_reason="end_turn", stop_details=None):
@@ -51,3 +51,11 @@ def test_refusal_raises_with_category():
 def test_truncated_output_raises():
     with pytest.raises(LLMError, match="max_tokens"):
         read_result(fake_response([text('{"relevant": tr')], "max_tokens"))
+
+
+def test_parse_traceparent():
+    traceparent = "00-0123456789abcdef0123456789abcdef-89abcdef01234567-01"
+    assert parse_traceparent(traceparent) == {
+        "trace_id": "0123456789abcdef0123456789abcdef",
+        "parent_span_id": "89abcdef01234567",
+    }
