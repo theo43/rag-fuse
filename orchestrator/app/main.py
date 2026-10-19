@@ -18,6 +18,7 @@ async def lifespan(app: FastAPI):
         clients.make_search(settings.retriever_url),
         settings.top_k,
         settings.max_attempts,
+        settings.graph_mode,
     )
     yield
     get_client().flush()  # traces are sent in the background: send what is left before exiting
@@ -54,7 +55,7 @@ def ask(body: AskRequest, request: Request, x_trace_id: str | None = Header(defa
         raise HTTPException(status_code=502, detail=f"upstream service error: {e}")
     return AskResponse(
         answer=final["answer"],
-        sources=[doc["id"] for doc in final["docs"]] if final["docs_relevant"] else [],
+        sources=[doc["id"] for doc in final["docs"]],
         trace_id=langfuse_handler.last_trace_id,
     )
 

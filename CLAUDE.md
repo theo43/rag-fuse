@@ -152,6 +152,7 @@ Further decisions (entry routing "is retrieval needed?", checking that the answe
 ├── retriever/
 ├── llm/
 ├── ingestion/
+├── evaluation/   # local script, not deployed
 └── k8s/
 ```
  
@@ -215,3 +216,9 @@ Updated at the end of each phase (see Git workflow, step 3). Records decisions, 
 - Built: graph step 2 (`retrieve → grade_docs → generate | rewrite_query → retrieve | fallback`); `LLMClient.structured` (→ `/structured`); `MAX_ATTEMPTS` in config (default 2 = at most 3 searches); `/ask` `sources` empty for the fallback. Checked: an in-corpus question answers directly, an out-of-corpus one (SMIC 2026) rewrites twice then falls back.
 - Decisions: one grading call over all passages, schema `{relevant: bool}` (no reason, no per-passage grading); rewrite sees the question + last query, schema `{query: str}`; fixed French fallback message (no LLM call); routing in `route_after_grade(state, max_attempts)`, a pure function.
 - Open: grading can be lenient (a loosely phrased question was graded relevant, then `generate` said the passages didn't fully answer); Langfuse shows the router as a `RunnableCallable` span under `grade_docs`. To measure in phase 7.
+
+**Phase 7 — Evaluation**
+- Built: `GRAPH_MODE=linear|agentic` in the orchestrator (default agentic, same nodes); `evaluation/` local CLI (`run --mode`, `summary`) on a fixed 30-question sample (seed 0): latency, hit (gold article in sources), fallbacks, LLM calls / searches / tokens / cost from Langfuse, LLM judge (`correct|partial|incorrect|not_found` + reason, gold article as reference, via `llm` `/structured`, untraced). Results in `evaluation/results/`.
+- Grading iterations (Haiku): (1) `{relevant: bool}` accepted 29/30 first retrievals, incl. 6 with the gold article missing → loop almost never fires; (2) `{answering_excerpt, coverage}` with only `complete` passing → 37% fallbacks, 8/11 discarding usable passages; (3) kept: same schema, only `none` triggers a rewrite. Final agentic vs linear: correct 33% both, correct+partial 83% vs 80%, not_found 10% vs 13%; rewrites recovered 2 of the 6 missing-article questions (q27, q75); cost 2.5 vs 1 LLM calls, 9.2 s vs 5.8 s mean latency, +60% cost.
+- Decisions: Langfuse keys exported from the Secret in the shell; 429 retry (Hobby plan rate-limits the public API); answers saved before fetching trace stats; each grading variant's results kept (`agentic-lenient`, `agentic-strict`, `agentic`).
+- Open: differences between modes are within noise (6/30 verdicts change between runs on identical retrieval); the agentic graph only helps when retrieval misses (20% of questions here); 3 fallbacks still had the gold article in the 1st retrieval (2 with a partial linear answer); judge = same model as generator.

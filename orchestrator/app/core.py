@@ -8,7 +8,7 @@ No direct I/O.
 """
 
 from collections.abc import Callable
-from typing import Protocol, TypedDict
+from typing import Literal, Protocol, TypedDict
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
@@ -19,11 +19,19 @@ Réponds en français, uniquement à partir des extraits fournis, et cite les ar
 Si les extraits ne permettent pas de répondre, dis-le clairement au lieu d'inventer."""
 
 GRADE_SYSTEM_PROMPT = """Tu évalues des extraits de la convention collective Syntec.
-Indique si au moins un extrait contient l'information nécessaire pour répondre à la question."""
+D'abord, recopie l'identifiant et la phrase de l'extrait qui répond à la question (chaîne vide si aucun).
+Ensuite, indique la couverture :
+- complete : un extrait répond explicitement à toute la question ;
+- partial : un extrait répond à une partie de la question seulement ;
+- none : aucun extrait ne répond (traiter d'un sujet proche ne suffit pas)."""
 GRADE_SCHEMA = {
     "type": "object",
-    "properties": {"relevant": {"type": "boolean"}},
-    "required": ["relevant"],
+    # Property order matters: the model quotes its evidence before giving the verdict.
+    "properties": {
+        "answering_excerpt": {"type": "string"},
+        "coverage": {"type": "string", "enum": ["complete", "partial", "none"]},
+    },
+    "required": ["answering_excerpt", "coverage"],
     "additionalProperties": False,
 }
 
@@ -60,6 +68,7 @@ class LLMClient(Protocol):
 
 
 Search = Callable[[str, int, str | None], list[dict]]  # (query, top_k, trace_id) -> passages
+GraphMode = Literal["linear", "agentic"]
 
 
 def initial_state(question: str) -> State:
@@ -89,7 +98,11 @@ def trace_id_of(config: RunnableConfig) -> str | None:
     return config.get("configurable", {}).get("trace_id")
 
 
-def build_graph(llm: LLMClient, search: Search, top_k: int, max_attempts: int) -> CompiledStateGraph:
+def build_graph(
+    llm: LLMClient, search: Search, top_k: int, max_attempts: int, mode: GraphMode = "agentic"
+) -> CompiledStateGraph:
+    """`agentic`: the step 2 graph above. `linear`: step 1, START -> retrieve -> generate -> END (for evaluation)."""
+
     # LangGraph passes the run config to nodes that declare a `config` parameter.
     def retrieve(state: State, config: RunnableConfig) -> dict:
         return {"docs": search(state["query"], top_k, trace_id_of(config))}
@@ -97,7 +110,8 @@ def build_graph(llm: LLMClient, search: Search, top_k: int, max_attempts: int) -
     def grade_docs(state: State, config: RunnableConfig) -> dict:
         prompt = build_prompt(state["question"], state["docs"])
         grade = llm.structured(prompt, GRADE_SYSTEM_PROMPT, GRADE_SCHEMA, trace_id_of(config))
-        return {"docs_relevant": grade["relevant"]}
+        # Only "none" triggers a rewrite: retrying on "partial" ended in fallbacks that discarded usable passages.
+        return {"docs_relevant": grade["coverage"] != "none"}
 
     def rewrite_query(state: State, config: RunnableConfig) -> dict:
         prompt = build_rewrite_prompt(state["question"], state["query"])
@@ -109,19 +123,23 @@ def build_graph(llm: LLMClient, search: Search, top_k: int, max_attempts: int) -
         return {"answer": llm.generate(prompt, SYSTEM_PROMPT, trace_id_of(config))}
 
     def fallback(state: State) -> dict:
-        return {"answer": FALLBACK_ANSWER}
+        return {"answer": FALLBACK_ANSWER, "docs": []}  # the answer is based on no passage
 
     graph = StateGraph(State)
     graph.add_node("retrieve", retrieve)
+    graph.add_node("generate", generate)
+    graph.add_edge(START, "retrieve")
+    graph.add_edge("generate", END)
+    if mode == "linear":
+        graph.add_edge("retrieve", "generate")
+        return graph.compile()
+
     graph.add_node("grade_docs", grade_docs)
     graph.add_node("rewrite_query", rewrite_query)
-    graph.add_node("generate", generate)
     graph.add_node("fallback", fallback)
-    graph.add_edge(START, "retrieve")
     graph.add_edge("retrieve", "grade_docs")
     graph.add_conditional_edges("grade_docs", lambda state: route_after_grade(state, max_attempts),
                                 ["generate", "rewrite_query", "fallback"])
     graph.add_edge("rewrite_query", "retrieve")
-    graph.add_edge("generate", END)
     graph.add_edge("fallback", END)
     return graph.compile()

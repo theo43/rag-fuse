@@ -14,9 +14,9 @@ DOCS = [{"id": "article-10#0", "doc_id": "article-10", "title": "Article 10 : CD
 
 
 class FakeLLM:
-    """`grades`: the answers of the successive `grade_docs` calls (True = relevant)."""
+    """`grades`: the coverage answered by the successive `grade_docs` calls."""
 
-    def __init__(self, grades=(True,)):
+    def __init__(self, grades=("complete",)):
         self.grades = list(grades)
         self.calls = []  # (method, prompt, trace_id)
 
@@ -28,7 +28,7 @@ class FakeLLM:
     def structured(self, prompt, system, schema, trace_id):
         if schema == GRADE_SCHEMA:
             self.calls.append(("grade", prompt, trace_id))
-            return {"relevant": self.grades.pop(0)}
+            return {"answering_excerpt": "", "coverage": self.grades.pop(0)}
         assert schema == REWRITE_SCHEMA
         self.calls.append(("rewrite", prompt, trace_id))
         return {"query": f"réécriture {sum(c[0] == 'rewrite' for c in self.calls)}"}
@@ -43,8 +43,9 @@ class FakeSearch:
         return DOCS
 
 
-def run(llm, search, question="q", max_attempts=2, config=None):
-    return build_graph(llm, search, top_k=3, max_attempts=max_attempts).invoke(initial_state(question), config=config)
+def run(llm, search, question="q", max_attempts=2, mode="agentic", config=None):
+    graph = build_graph(llm, search, top_k=3, max_attempts=max_attempts, mode=mode)
+    return graph.invoke(initial_state(question), config=config)
 
 
 def test_route_after_grade():
@@ -55,7 +56,7 @@ def test_route_after_grade():
 
 
 def test_relevant_docs_go_straight_to_generate():
-    llm, search = FakeLLM(grades=[True]), FakeSearch()
+    llm, search = FakeLLM(grades=["complete"]), FakeSearch()
     final = run(llm, search, question="Les CDD sont-ils couverts ?")
     assert [c[0] for c in llm.calls] == ["grade", "generate"]
     assert llm.calls[1][1] == build_prompt("Les CDD sont-ils couverts ?", DOCS)
@@ -64,8 +65,15 @@ def test_relevant_docs_go_straight_to_generate():
     assert final["attempts"] == 0
 
 
+def test_partial_coverage_goes_to_generate():
+    llm, search = FakeLLM(grades=["partial"]), FakeSearch()
+    final = run(llm, search)
+    assert [c[0] for c in llm.calls] == ["grade", "generate"]
+    assert final["attempts"] == 0
+
+
 def test_irrelevant_docs_rewrite_the_query_and_search_again():
-    llm, search = FakeLLM(grades=[False, True]), FakeSearch()
+    llm, search = FakeLLM(grades=["none", "complete"]), FakeSearch()
     final = run(llm, search)
     assert [c[0] for c in llm.calls] == ["grade", "rewrite", "grade", "generate"]
     assert [query for query, _, _ in search.calls] == ["q", "réécriture 1"]  # retrieve uses the rewritten query
@@ -75,17 +83,26 @@ def test_irrelevant_docs_rewrite_the_query_and_search_again():
 
 
 def test_fallback_after_max_attempts():
-    llm, search = FakeLLM(grades=[False, False, False]), FakeSearch()
+    llm, search = FakeLLM(grades=["none", "none", "none"]), FakeSearch()
     final = run(llm, search, max_attempts=2)
     assert [c[0] for c in llm.calls] == ["grade", "rewrite", "grade", "rewrite", "grade"]
     assert len(search.calls) == 3
     assert final["attempts"] == 2
     assert final["docs_relevant"] is False
     assert final["answer"] == FALLBACK_ANSWER
+    assert final["docs"] == []  # no sources for the fallback answer
+
+
+def test_linear_mode_skips_grading():
+    llm, search = FakeLLM(grades=[]), FakeSearch()
+    final = run(llm, search, mode="linear")
+    assert [c[0] for c in llm.calls] == ["generate"]
+    assert final["docs"] == DOCS
+    assert final["answer"] == "Oui (Article 10)."
 
 
 def test_trace_id_from_run_config_reaches_search_and_llm():
-    llm, search = FakeLLM(grades=[False, True]), FakeSearch()
+    llm, search = FakeLLM(grades=["none", "complete"]), FakeSearch()
     run(llm, search, config={"configurable": {"trace_id": "abc123"}})
     assert {trace_id for _, _, trace_id in search.calls} == {"abc123"}
     assert {trace_id for _, _, trace_id in llm.calls} == {"abc123"}
